@@ -17,7 +17,7 @@ struct Users_2: View {
         
         ZStack {
             
-            Color("bg")
+            Color("bg2")
                 .ignoresSafeArea()
             
             VStack {
@@ -59,11 +59,11 @@ struct Users_2: View {
                 }, label: {
                     
                     Text("Next")
-                        .foregroundColor(.black)
+                        .foregroundColor(.white)
                         .font(.system(size: 15, weight: .medium))
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
-                        .background(RoundedRectangle(cornerRadius: 15).fill(Color("primary")))
+                        .background(RoundedRectangle(cornerRadius: 15).fill(Color("primary2")))
                         .padding()
                 })
             }

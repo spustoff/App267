@@ -16,7 +16,7 @@ struct Users_4: View {
         
         ZStack {
             
-            Color("bg")
+            Color("bg2")
                 .ignoresSafeArea()
             
             VStack {
@@ -51,11 +51,11 @@ struct Users_4: View {
                 }, label: {
                     
                     Text("Enable Notifications")
-                        .foregroundColor(.black)
+                        .foregroundColor(.white)
                         .font(.system(size: 15, weight: .medium))
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
-                        .background(RoundedRectangle(cornerRadius: 15).fill(Color("primary")))
+                        .background(RoundedRectangle(cornerRadius: 15).fill(Color("primary2")))
                         .padding()
                 })
             }

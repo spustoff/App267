@@ -29,68 +29,56 @@ class WController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     @AppStorage("first_open") var firstOpen: Bool = true
     @AppStorage("silka") var silka: String = ""
     
-    @Published var url_link: URL = URL(string: "h")!
+    @Published var url_link: URL = URL(string: "https://example.com")!
+    @Published var isAllChangeURL: Bool = false
     
     var webView = WKWebView()
-    var redirectTimer: Timer?
-    
+    var loadCheckTimer: Timer?
+    var isPageLoadedSuccessfully = false
+
     override func viewDidLoad() {
-        
         super.viewDidLoad()
-        
         getRequest()
     }
     
     private func getRequest() {
         
-        getFirebaseData(field: "url_link", dataType: .url) { resulter in
+        getFirebaseData(field: "isAllChangeURL", dataType: .bool) { isAllChangeURLTemp in
             
-            guard let url = URL(string: "\(resulter)") else { return }
+            self.isAllChangeURL = isAllChangeURLTemp as? Bool ?? false
+            
+            getFirebaseData(field: "url_link", dataType: .url) { resulter in
+                
+                guard let url = URL(string: "\(resulter)") else { return }
 
-            if let modifiedURL = self.insertValueAfterClickID(in: "\(resulter)", with: Apphud.userID()) {
-                
-                self.url_link = modifiedURL
-                
-            } else {
-                
                 self.url_link = url
+                self.getInfo()
             }
-            
-            if self.firstOpen {
-                
-                self.firstOpen = false
-                
-                if self.url_link.absoluteString.contains("thread") || self.url_link.absoluteString.contains("td") {
-                    
-                    self.startRedirectTimer()
-                }
-            }
-            
-            self.getInfo()
         }
-    }
-    
-    func insertValueAfterClickID(in urlString: String, with value: String) -> URL? {
-        var newURLString = urlString
-
-        if let range = urlString.range(of: "click_id=") {
-            let existingIDEnd = urlString[range.upperBound...].firstIndex(where: { !$0.isNumber }) ?? urlString.endIndex
-            let insertionPoint = urlString.index(range.upperBound, offsetBy: urlString.distance(from: range.upperBound, to: existingIDEnd))
-            newURLString.insert(contentsOf: value, at: insertionPoint)
-        } else {
-            let separator = urlString.contains("?") ? "&" : "?"
-            newURLString += "\(separator)click_id=\(value)"
-        }
-        
-        return URL(string: newURLString)
     }
     
     private func getInfo() {
+        
         var request: URLRequest?
         
-        if silka == "about:blank" || silka.isEmpty {
+        if isAllChangeURL {
+            
             request = URLRequest(url: self.url_link)
-            self.silka = url_link.absoluteString
+            silka = url_link.absoluteString
+            
+        } else {
+            
+            if silka == "about:blank" || silka.isEmpty {
+                
+                request = URLRequest(url: self.url_link)
+                
+            } else {
+                
+                if let currentURL = URL(string: silka) {
+                    
+                    request = URLRequest(url: currentURL)
+                }
+            }
         }
         
         let cookies = HTTPCookieStorage.shared.cookies ?? []
@@ -98,18 +86,16 @@ class WController: UIViewController, WKNavigationDelegate, WKUIDelegate {
         request?.allHTTPHeaderFields = headers
         
         DispatchQueue.main.async {
+            
             self.setupWebView()
         }
     }
     
     private func setupWebView() {
         
-        guard let url = URL(string: silka) else { return }
+        let urlString = silka.isEmpty ? url_link.absoluteString : silka
         
-        silka = "\(url)"
-        saveCookie()
-        
-        print("silka 1: \(url)")
+        guard let url = URL(string: urlString) else { return }
         
         view.backgroundColor = .white
         view.addSubview(webView)
@@ -129,77 +115,70 @@ class WController: UIViewController, WKNavigationDelegate, WKUIDelegate {
         
         loadCookie()
     }
-    
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        
-        guard let url = navigationAction.request.url else {
-            
-            decisionHandler(.cancel)
-            
-            return
-        }
 
-        if !url.absoluteString.contains("widgets") && url.absoluteString != "about:blank" && url.absoluteString != "about:srcdoc" && !url.absoluteString.contains("google") {
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        
+        isPageLoadedSuccessfully = false
+        loadCheckTimer?.invalidate()
+        loadCheckTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
             
-            self.silka = url.absoluteString
-            
-            self.saveCookie()
-            
-            print("saved url: \(self.silka)")
+            if let strongSelf = self, !strongSelf.isPageLoadedSuccessfully {
+                
+                print("Страница не загрузилась в течение 5 секунд.")
+            }
         }
-        
-        print("url: \(self.silka)")
-        
-        decisionHandler(.allow)
-    }
-    
-    private func startRedirectTimer() {
-        redirectTimer?.invalidate()
-        redirectTimer = Timer.scheduledTimer(timeInterval: 7.0, target: self, selector: #selector(checkForRedirect), userInfo: nil, repeats: false)
     }
 
-    @objc private func checkForRedirect() {
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         
-        if let currentURL = webView.url, !currentURL.absoluteString.contains("widgets") {
+        isPageLoadedSuccessfully = true
+        loadCheckTimer?.invalidate()
+        
+        if let currentURL = webView.url?.absoluteString, currentURL != url_link.absoluteString {
             
-            silka = currentURL.absoluteString
-            
-            UserDefaults.standard.set(silka, forKey: "lastURL")
+            silka = currentURL
         }
     }
-    
-    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if navigationAction.targetFrame == nil {
-            webView.load(navigationAction.request)
-        }
-        return nil
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        
+        isPageLoadedSuccessfully = false
+        loadCheckTimer?.invalidate()
     }
-    
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        
+        isPageLoadedSuccessfully = false
+        loadCheckTimer?.invalidate()
+    }
+
     func saveCookie() {
-        let cookieJar: HTTPCookieStorage = HTTPCookieStorage.shared
+        
+        let cookieJar = HTTPCookieStorage.shared
+        
         if let cookies = cookieJar.cookies {
-            let data: Data = NSKeyedArchiver.archivedData(withRootObject: cookies)
-            let ud: UserDefaults = UserDefaults.standard
-            ud.set(data, forKey: "cookie")
+            
+            let data = NSKeyedArchiver.archivedData(withRootObject: cookies)
+            
+            UserDefaults.standard.set(data, forKey: "cookie")
         }
     }
     
     func loadCookie() {
-        let ud: UserDefaults = UserDefaults.standard
-        let data: Data? = ud.object(forKey: "cookie") as? Data
-        if let cookie = data {
-            let datas: NSArray? = NSKeyedUnarchiver.unarchiveObject(with: cookie) as? NSArray
-            if let cookies = datas {
-                for c in cookies {
-                    if let cookieObject = c as? HTTPCookie {
-                        HTTPCookieStorage.shared.setCookie(cookieObject)
-                    }
-                }
+        
+        let ud = UserDefaults.standard
+        
+        if let data = ud.object(forKey: "cookie") as? Data, let cookies = NSKeyedUnarchiver.unarchiveObject(with: data) as? [HTTPCookie] {
+            
+            for cookie in cookies {
+                
+                HTTPCookieStorage.shared.setCookie(cookie)
             }
         }
     }
-    
+
     override func viewDidLayoutSubviews() {
+        
         super.viewDidLayoutSubviews()
     }
 }
